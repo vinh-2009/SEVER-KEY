@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Key & License Server Management Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- CẢNH BÁO NẾU MỞ TRỰC TIẾP TỪ FILE TRÊN Ổ ĐĨA -->
+  <div id="fileProtocolWarning" class="hidden bg-amber-600 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <span>Bạn đang mở trực tiếp file HTML! Để tạo key và kết nối server, vui lòng mở trình duyệt và truy cập: <b>http://localhost:3000</b></span>
+  </div>
+
+  <!-- TOP NAVIGATION -->
+  <header class="glass sticky top-0 z-40 border-b border-gray-800 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-key text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-white tracking-wide flex items-center gap-2">
+            API KEY & LICENSE SERVER
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span> Online
+            </span>
+          </h1>
+          <p class="text-xs text-gray-400">Hệ thống cấp và xác thực bản quyền ứng dụng</p>
+        </div>
+      </div>
+
+      <!-- Admin Token Input & Nav actions -->
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center">
+          <span class="absolute left-3 text-gray-500 text-xs"><i class="fa-solid fa-shield-halved"></i></span>
+          <input type="password" id="adminTokenInput" placeholder="Admin Token..." 
+            class="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 w-44 font-mono">
+          <button onclick="saveAdminToken()" title="Lưu token" class="ml-1 p-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700">
+            <i class="fa-solid fa-floppy-disk"></i>
+          </button>
+        </div>
+        <button onclick="switchTab('keys')" id="navKeysBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition">
+          <i class="fa-solid fa-list-check mr-1.5"></i> Danh sách Key
+        </button>
+        <button onclick="switchTab('guide')" id="navGuideBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition">
+          <i class="fa-solid fa-code mr-1.5"></i> Gắn vào App
+        </button>
+        <button onclick="switchTab('logs')" id="navLogsBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition">
+          <i class="fa-solid fa-chart-line mr-1.5"></i> Logs
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto w-full px-6 py-6 flex-1">
+
+    <!-- STATS OVERVIEW -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="glass-card p-5 rounded-2xl flex items-center justify-between border-l-4 border-l-indigo-500">
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Tổng số Key</p>
+          <h3 id="statTotalKeys" class="text-2xl font-bold text-white mt-1">0</h3>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-tags"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl flex items-center justify-between border-l-4 border-l-emerald-500">
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Key Hoạt động</p>
+          <h3 id="statActiveKeys" class="text-2xl font-bold text-emerald-400 mt-1">0</h3>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl flex items-center justify-between border-l-4 border-l-rose-500">
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Key Bị Khóa</p>
+          <h3 id="statBlockedKeys" class="text-2xl font-bold text-rose-400 mt-1">0</h3>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl flex items-center justify-between border-l-4 border-l-cyan-500">
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Lượt gọi API</p>
+          <h3 id="statTotalRequests" class="text-2xl font-bold text-cyan-400 mt-1">0</h3>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-bolt"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 1: KEYS MANAGEMENT -->
+    <div id="tabKeys" class="space-y-4">
+      <!-- Toolbar -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-900/60 p-3 rounded-xl border border-gray-800">
+        <div class="flex flex-1 items-center gap-2">
+          <div class="relative flex-1 max-w-md">
+            <span class="absolute left-3.5 top-2.5 text-gray-500 text-xs"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="text" id="searchInput" placeholder="Tìm theo tên khách, mã key, mã máy HWID..." 
+              oninput="debounceSearch()"
+              class="w-full pl-9 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500">
+          </div>
+          <select id="statusFilter" onchange="loadKeys()" class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="blocked">Đã bị khóa</option>
+            <option value="expired">Đã hết hạn</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="loadKeys()" class="p-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 text-sm" title="Làm mới">
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+          
+          <!-- NÚT TẠO NHANH 1-CLICK -->
+          <button onclick="quickCreateKey()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition" title="Tạo ngay 1 Key 30 ngày chỉ với 1 click">
+            <i class="fa-solid fa-bolt text-amber-300"></i> Tạo Nhanh Key (30 Ngày)
+          </button>
+
+          <!-- NÚT TÙY CHỌN TẠO KEY -->
+          <button onclick="openCreateModal()" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium text-xs sm:text-sm rounded-lg shadow-md shadow-indigo-600/30 flex items-center gap-2 transition">
+            <i class="fa-solid fa-plus"></i> Tạo Key Tùy Chỉnh
+          </button>
+        </div>
+      </div>
+
+      <!-- Keys Table -->
+      <div class="glass-card rounded-2xl overflow-hidden border border-gray-800">
+        <div class="overflow-x-auto custom-scroll">
+          <table class="w-full text-left text-sm text-gray-300">
+            <thead class="bg-gray-900/80 text-xs uppercase tracking-wider text-gray-400 border-b border-gray-800">
+              <tr>
+                <th class="px-5 py-3.5">Khách hàng / Ghi chú</th>
+                <th class="px-5 py-3.5">Mã API / License Key</th>
+                <th class="px-5 py-3.5">Trạng thái</th>
+                <th class="px-5 py-3.5">Mã máy (HWID)</th>
+                <th class="px-5 py-3.5">Thời hạn</th>
+                <th class="px-5 py-3.5">Lượt dùng</th>
+                <th class="px-5 py-3.5 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="keysTableBody" class="divide-y divide-gray-800/60">
+              <tr>
+                <td colspan="7" class="px-5 py-8 text-center text-gray-500">
+                  <i class="fa-solid fa-circle-notch fa-spin text-xl text-indigo-500 mb-2"></i>
+                  <p>Đang tải dữ liệu...</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: CODE INTEGRATION GUIDE -->
+    <div id="tabGuide" class="hidden space-y-6">
+      <div class="glass-card p-6 rounded-2xl border border-gray-800">
+        <div class="flex items-center justify-between pb-4 border-b border-gray-800">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-code text-indigo-400"></i> Hướng Dẫn Tích Hợp API Key Vào App
+            </h2>
+            <p class="text-sm text-gray-400 mt-1">Hệ thống hỗ trợ truyền Key qua Header, URL query hoặc JSON body.</p>
+          </div>
+          <div class="text-xs bg-indigo-500/10 text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-500/20 font-mono">
+            Endpoint: <span id="guideEndpoint">http://localhost:3000/api/v1/verify</span>
+          </div>
+        </div>
+
+        <!-- Language buttons -->
+        <div class="flex flex-wrap gap-2 mt-4">
+          <button onclick="switchLang('csharp')" id="btnLangCsharp" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white">
+            <i class="fa-brands fa-microsoft mr-1"></i> C# (.NET / WinForms / WPF)
+          </button>
+          <button onclick="switchLang('python')" id="btnLangPython" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-400 hover:text-white">
+            <i class="fa-brands fa-python mr-1"></i> Python
+          </button>
+          <button onclick="switchLang('js')" id="btnLangJs" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-400 hover:text-white">
+            <i class="fa-brands fa-js mr-1"></i> JavaScript / Node.js
+          </button>
+          <button onclick="switchLang('flutter')" id="btnLangFlutter" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-400 hover:text-white">
+            <i class="fa-solid fa-mobile-screen-button mr-1"></i> Flutter / Dart
+          </button>
+          <button onclick="switchLang('curl')" id="btnLangCurl" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-400 hover:text-white">
+            <i class="fa-solid fa-terminal mr-1"></i> cURL / HTTP
+          </button>
+        </div>
+
+        <!-- Code Block Container -->
+        <div class="relative mt-4">
+          <button onclick="copyCurrentCode()" class="absolute right-3 top-3 px-3 py-1 bg-gray-700/80 hover:bg-gray-600 text-gray-200 text-xs rounded font-medium flex items-center gap-1.5 z-10 transition">
+            <i class="fa-regular fa-copy"></i> <span id="copyCodeText">Copy code</span>
+          </button>
+          <pre id="codeDisplay" class="bg-gray-950 p-5 rounded-xl border border-gray-800 text-xs text-emerald-400 font-mono overflow-x-auto custom-scroll leading-relaxed"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: LOGS -->
+    <div id="tabLogs" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i> Lịch Sử Truy Cập & Xác Thực
+        </h2>
+        <button onclick="loadLogs()" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded-lg border border-gray-700 flex items-center gap-1.5">
+          <i class="fa-solid fa-arrows-rotate"></i> Làm mới logs
+        </button>
+      </div>
+
+      <div class="glass-card rounded-2xl overflow-hidden border border-gray-800">
+        <div class="overflow-x-auto custom-scroll">
+          <table class="w-full text-left text-xs text-gray-300">
+            <thead class="bg-gray-900/80 text-gray-400 uppercase tracking-wider border-b border-gray-800">
+              <tr>
+                <th class="px-4 py-3">Thời gian</th>
+                <th class="px-4 py-3">Mã Key</th>
+                <th class="px-4 py-3">Mã máy (HWID)</th>
+                <th class="px-4 py-3">IP</th>
+                <th class="px-4 py-3">Trạng thái</th>
+                <th class="px-4 py-3">Thông điệp</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody" class="divide-y divide-gray-800/50 font-mono">
+              <!-- Logs injected here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: TẠO KEY MỚI -->
+  <div id="createKeyModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="glass-card w-full max-w-lg rounded-2xl p-6 border border-gray-700 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-4 border-b border-gray-800">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-key text-indigo-400"></i> Tạo API / License Key Mới
+        </h3>
+        <button onclick="closeCreateModal()" class="text-gray-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div id="createErrorAlert" class="hidden mt-3 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-xs"></div>
+
+      <form id="createKeyForm" onsubmit="handleCreateKey(event)" class="space-y-4 mt-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Tên khách hàng / Ứng dụng (Tùy chọn)</label>
+          <input type="text" id="keyName" placeholder="Ví dụ: Nguyễn Văn A hoặc Tool Auto Facebook"
+            class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-300 mb-1">Tiền tố Key</label>
+            <input type="text" id="keyPrefix" value="VIP" placeholder="VIP, PRO, APP..."
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white uppercase focus:outline-none focus:border-indigo-500 font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-300 mb-1">Thời hạn sử dụng</label>
+            <select id="keyDuration" onchange="handleDurationChange()" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+              <option value="1">1 Ngày (Dùng thử)</option>
+              <option value="7">7 Ngày</option>
+              <option value="30" selected>30 Ngày (1 Tháng)</option>
+              <option value="90">90 Ngày (3 Tháng)</option>
+              <option value="365">365 Ngày (1 Năm)</option>
+              <option value="0">Vĩnh viễn (Lifetime)</option>
+              <option value="custom">Tự nhập số ngày...</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Ô nhập số ngày tùy chỉnh nếu chọn custom -->
+        <div id="customDaysWrapper" class="hidden">
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Số ngày cụ thể</label>
+          <input type="number" id="customDaysInput" placeholder="Ví dụ: 45" min="1"
+            class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-300 mb-1">Mã Key tùy chọn (để trống nếu sinh ngẫu nhiên)</label>
+            <input type="text" id="customKeyInput" placeholder="VD: MY-CUSTOM-KEY-123"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-300 mb-1">Số lượng key muốn tạo</label>
+            <input type="number" id="keyQuantity" value="1" min="1" max="50"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Ghi chú (Tùy chọn)</label>
+          <input type="text" id="keyNote" placeholder="Ví dụ: Đã nhận chuyển khoản Momo 150k"
+            class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-gray-800">
+          <button type="button" onclick="closeCreateModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium rounded-lg">
+            Hủy
+          </button>
+          <button type="submit" id="btnSubmitCreate" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg shadow-lg shadow-indigo-600/30 flex items-center gap-2">
+            <i class="fa-solid fa-check"></i> Xác Nhận Tạo Key
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GIA HẠN KEY -->
+  <div id="extendModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="glass-card w-full max-w-md rounded-2xl p-6 border border-gray-700 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-2">Gia Hạn Bản Quyền Key</h3>
+      <p id="extendKeyLabel" class="text-xs text-gray-400 font-mono mb-4"></p>
+      
+      <div class="space-y-3">
+        <label class="block text-xs text-gray-300">Chọn số ngày cộng thêm:</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" onclick="setExtendDays(7)" class="py-2 bg-gray-800 hover:bg-indigo-600 text-white rounded text-xs font-medium border border-gray-700">+7 Ngày</button>
+          <button type="button" onclick="setExtendDays(30)" class="py-2 bg-gray-800 hover:bg-indigo-600 text-white rounded text-xs font-medium border border-gray-700">+30 Ngày</button>
+          <button type="button" onclick="setExtendDays(90)" class="py-2 bg-gray-800 hover:bg-indigo-600 text-white rounded text-xs font-medium border border-gray-700">+90 Ngày</button>
+          <button type="button" onclick="setExtendDays(180)" class="py-2 bg-gray-800 hover:bg-indigo-600 text-white rounded text-xs font-medium border border-gray-700">+180 Ngày</button>
+          <button type="button" onclick="setExtendDays(365)" class="py-2 bg-gray-800 hover:bg-indigo-600 text-white rounded text-xs font-medium border border-gray-700">+1 Năm</button>
+        </div>
+        <div class="mt-2">
+          <input type="number" id="extendDaysInput" value="30" min="1" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white">
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 mt-6">
+        <button onclick="closeExtendModal()" class="px-4 py-2 bg-gray-800 text-gray-300 text-xs rounded-lg">Đóng</button>
+        <button onclick="submitExtend()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg">Xác nhận gia hạn</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div id="toastContent" class="glass px-5 py-3.5 rounded-xl shadow-2xl border border-indigo-500/40 text-sm flex items-center gap-3 text-white">
+      <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+      <span id="toastMsg" class="font-medium">Thao tác thành công</span>
+    </div>
+  </div>
+
+  <script>
+    // Kiểm tra protocol file
+    if (window.location.protocol === 'file:') {
+      document.getElementById('fileProtocolWarning').classList.remove('hidden');
+    }
+
+    // State
+    const BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+    let adminToken = localStorage.getItem('server_admin_token') || 'admin_secret_key_123';
+    let currentKeys = [];
+    let currentLang = 'csharp';
+    let extendingKeyId = null;
+    let searchTimeout = null;
+
+    document.getElementById('adminTokenInput').value = adminToken;
+    document.getElementById('guideEndpoint').innerText = (window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:3000') + '/api/v1/verify';
+
+    // Tabs
+    function switchTab(tab) {
+      document.getElementById('tabKeys').classList.toggle('hidden', tab !== 'keys');
+      document.getElementById('tabGuide').classList.toggle('hidden', tab !== 'guide');
+      document.getElementById('tabLogs').classList.toggle('hidden', tab !== 'logs');
+
+      document.getElementById('navKeysBtn').className = tab === 'keys' 
+        ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white' 
+        : 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700';
+
+      document.getElementById('navGuideBtn').className = tab === 'guide' 
+        ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white' 
+        : 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700';
+
+      document.getElementById('navLogsBtn').className = tab === 'logs' 
+        ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white' 
+        : 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700';
+
+      if (tab === 'keys') loadKeys();
+      if (tab === 'guide') renderCodeSnippet();
+      if (tab === 'logs') loadLogs();
+    }
+
+    function saveAdminToken() {
+      adminToken = document.getElementById('adminTokenInput').value.trim() || 'admin_secret_key_123';
+      localStorage.setItem('server_admin_token', adminToken);
+      showToast('Đã lưu Admin Token: ' + adminToken, 'success');
+      loadStats();
+      loadKeys();
+    }
+
+    function showToast(msg, type = 'success') {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toastIcon');
+      document.getElementById('toastMsg').innerText = msg;
+      
+      icon.className = type === 'success' 
+        ? 'fa-solid fa-circle-check text-emerald-400 text-lg' 
+        : 'fa-solid fa-triangle-exclamation text-rose-400 text-lg';
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3500);
+    }
+
+    // Load Stats
+    async function loadStats() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/stats`, {
+          headers: { 'x-admin-token': adminToken }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('statTotalKeys').innerText = data.stats.totalKeys;
+          document.getElementById('statActiveKeys').innerText = data.stats.activeKeys;
+          document.getElementById('statBlockedKeys').innerText = data.stats.blockedKeys;
+          document.getElementById('statTotalRequests').innerText = data.stats.totalRequests;
+        }
+      } catch (err) {
+        console.error('Lỗi tải thống kê:', err);
+      }
+    }
+
+    // Load Keys
+    async function loadKeys() {
+      const search = document.getElementById('searchInput').value.trim();
+      const status = document.getElementById('statusFilter').value;
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys?search=${encodeURIComponent(search)}&status=${status}`, {
+          headers: { 'x-admin-token': adminToken }
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            showToast('Token quản trị chưa đúng!', 'error');
+          }
+          return;
+        }
+
+        currentKeys = data.keys || [];
+        renderKeysTable(currentKeys);
+        loadStats();
+      } catch (err) {
+        console.error(err);
+        showToast('Không kết nối được server (Hãy đảm bảo server đang chạy)', 'error');
+      }
+    }
+
+    function debounceSearch() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(loadKeys, 300);
+    }
+
+    function renderKeysTable(keys) {
+      const tbody = document.getElementById('keysTableBody');
+      if (!keys.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="px-5 py-8 text-center text-gray-500">
+              <i class="fa-solid fa-folder-open text-2xl mb-2 text-gray-600 block"></i>
+              Chưa có key nào. Bấm <b>"⚡ Tạo Nhanh Key"</b> hoặc <b>"+ Tạo Key Tùy Chỉnh"</b> để tạo ngay!
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = keys.map(k => {
+        let statusBadge = '';
+        const isExpired = k.expires_at && new Date(k.expires_at) < new Date();
+        if (k.status === 'blocked') {
+          statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Bị Khóa</span>`;
+        } else if (isExpired || k.status === 'expired') {
+          statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Hết Hạn</span>`;
+        } else {
+          statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Hoạt Động</span>`;
+        }
+
+        let expireLabel = '';
+        if (!k.expires_at) {
+          expireLabel = '<span class="text-cyan-400 font-semibold"><i class="fa-solid fa-infinity mr-1"></i>Vĩnh viễn</span>';
+        } else {
+          const diffDays = Math.ceil((new Date(k.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 0) {
+            expireLabel = `<span class="text-rose-400 font-medium">Đã hết hạn (${new Date(k.expires_at).toLocaleDateString('vi-VN')})</span>`;
+          } else {
+            expireLabel = `<span class="text-gray-300 font-medium">Còn <b>${diffDays}</b> ngày</span><br><span class="text-[10px] text-gray-500">${new Date(k.expires_at).toLocaleDateString('vi-VN')}</span>`;
+          }
+        }
+
+        let hwidDisplay = '';
+        if (k.hwid) {
+          hwidDisplay = `
+            <div class="flex items-center gap-1.5">
+              <span class="font-mono text-xs text-gray-300 truncate max-w-[120px]" title="${k.hwid}">${k.hwid}</span>
+              <button onclick="resetHwid(${k.id})" title="Reset mã máy để khách đổi thiết bị" class="p-1 text-gray-400 hover:text-amber-400 text-xs">
+                <i class="fa-solid fa-arrow-rotate-left"></i>
+              </button>
+            </div>
+          `;
+        } else {
+          hwidDisplay = `<span class="text-xs text-gray-500 italic">Chưa gán máy (Tự nhận khi app mở)</span>`;
+        }
+
+        return `
+          <tr class="hover:bg-gray-800/40 transition">
+            <td class="px-5 py-4">
+              <div class="font-bold text-white">${escapeHtml(k.name)}</div>
+              ${k.note ? `<div class="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><i class="fa-regular fa-note-sticky text-indigo-400 text-[10px]"></i> ${escapeHtml(k.note)}</div>` : ''}
+            </td>
+            <td class="px-5 py-4">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-xs font-semibold text-indigo-300 bg-indigo-950/40 px-2.5 py-1 rounded border border-indigo-800/60 select-all">${k.key}</span>
+                <button onclick="copyText('${k.key}')" class="text-gray-400 hover:text-white text-xs p-1" title="Copy Key">
+                  <i class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+            </td>
+            <td class="px-5 py-4">${statusBadge}</td>
+            <td class="px-5 py-4">${hwidDisplay}</td>
+            <td class="px-5 py-4">${expireLabel}</td>
+            <td class="px-5 py-4 font-mono text-xs">
+              <span class="text-cyan-400 font-bold">${k.total_requests}</span> reqs
+              ${k.last_used_at ? `<div class="text-[10px] text-gray-500">${timeAgo(k.last_used_at)}</div>` : ''}
+            </td>
+            <td class="px-5 py-4 text-right">
+              <div class="flex items-center justify-end gap-1.5">
+                <button onclick="toggleBlockKey(${k.id}, '${k.status}')" class="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-xs text-gray-300" title="${k.status === 'blocked' ? 'Mở khóa key' : 'Khóa key này'}">
+                  <i class="fa-solid ${k.status === 'blocked' ? 'fa-lock-open text-emerald-400' : 'fa-lock text-rose-400'}"></i>
+                </button>
+                <button onclick="openExtendModal(${k.id}, '${k.key}')" class="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-xs text-indigo-400" title="Gia hạn thêm ngày">
+                  <i class="fa-solid fa-calendar-plus"></i>
+                </button>
+                <button onclick="deleteKey(${k.id})" class="p-1.5 rounded bg-gray-800 hover:bg-rose-900/50 text-xs text-gray-400 hover:text-rose-400" title="Xóa key">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // TẠO NHANH KEY 1-CLICK
+    async function quickCreateKey() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/quick-create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': adminToken
+          },
+          body: JSON.stringify({ days: 30, prefix: 'VIP' })
+        });
+        const data = await res.json();
+        if (data.success && data.key) {
+          copyText(data.key.key);
+          showToast(`⚡ Đã tạo Key mới: ${data.key.key} (Đã tự copy vào clipboard!)`, 'success');
+          loadKeys();
+        } else {
+          showToast(data.message || 'Lỗi tạo key nhanh', 'error');
+        }
+      } catch (err) {
+        showToast('Lỗi gửi yêu cầu tới server', 'error');
+      }
+    }
+
+    // Modal Create Key
+    function openCreateModal() {
+      document.getElementById('createErrorAlert').classList.add('hidden');
+      document.getElementById('createKeyModal').classList.remove('hidden');
+    }
+    function closeCreateModal() {
+      document.getElementById('createKeyModal').classList.add('hidden');
+    }
+
+    function handleDurationChange() {
+      const val = document.getElementById('keyDuration').value;
+      document.getElementById('customDaysWrapper').classList.toggle('hidden', val !== 'custom');
+    }
+
+    async function handleCreateKey(e) {
+      e.preventDefault();
+      const errBox = document.getElementById('createErrorAlert');
+      errBox.classList.add('hidden');
+
+      const name = document.getElementById('keyName').value.trim();
+      const prefix = document.getElementById('keyPrefix').value.trim();
+      const note = document.getElementById('keyNote').value.trim();
+      const customKey = document.getElementById('customKeyInput').value.trim();
+      const quantity = parseInt(document.getElementById('keyQuantity').value) || 1;
+      
+      let durationDays = document.getElementById('keyDuration').value;
+      if (durationDays === 'custom') {
+        durationDays = document.getElementById('customDaysInput').value || 30;
+      }
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': adminToken
+          },
+          body: JSON.stringify({
+            name,
+            prefix,
+            durationDays: parseInt(durationDays),
+            note,
+            customKey,
+            quantity
+          })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          const firstKey = data.keys && data.keys[0] ? data.keys[0].key : (data.key ? data.key.key : '');
+          if (firstKey) copyText(firstKey);
+
+          showToast(`Tạo thành công ${data.keys ? data.keys.length : 1} key! (Đã copy key đầu tiên)`, 'success');
+          closeCreateModal();
+          document.getElementById('createKeyForm').reset();
+          loadKeys();
+        } else {
+          errBox.innerText = data.message || 'Không thể tạo key';
+          errBox.classList.remove('hidden');
+        }
+      } catch (err) {
+        errBox.innerText = 'Lỗi kết nối tới server. Vui lòng kiểm tra lại server!';
+        errBox.classList.remove('hidden');
+      }
+    }
+
+    // Toggle Block
+    async function toggleBlockKey(id, currentStatus) {
+      const newStatus = currentStatus === 'blocked' ? 'active' : 'blocked';
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': adminToken
+          },
+          body: JSON.stringify({ status: newStatus })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(newStatus === 'active' ? 'Đã mở khóa Key' : 'Đã khóa Key', 'success');
+          loadKeys();
+        }
+      } catch (err) {
+        showToast('Lỗi cập nhật', 'error');
+      }
+    }
+
+    // Reset HWID
+    async function resetHwid(id) {
+      if (!confirm('Bạn có chắc chắn muốn xóa mã máy (HWID) để khách gắn vào máy mới?')) return;
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys/${id}/reset-hwid`, {
+          method: 'POST',
+          headers: { 'x-admin-token': adminToken }
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Đã reset mã thiết bị HWID thành công', 'success');
+          loadKeys();
+        }
+      } catch (err) {
+        showToast('Lỗi reset HWID', 'error');
+      }
+    }
+
+    // Delete Key
+    async function deleteKey(id) {
+      if (!confirm('Bạn có chắc chắn muốn xóa vĩnh viễn Key này?')) return;
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys/${id}`, {
+          method: 'DELETE',
+          headers: { 'x-admin-token': adminToken }
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Đã xóa Key thành công', 'success');
+          loadKeys();
+        }
+      } catch (err) {
+        showToast('Lỗi xóa key', 'error');
+      }
+    }
+
+    // Extend Modal
+    function openExtendModal(id, keyStr) {
+      extendingKeyId = id;
+      document.getElementById('extendKeyLabel').innerText = 'Key: ' + keyStr;
+      document.getElementById('extendModal').classList.remove('hidden');
+    }
+    function closeExtendModal() {
+      document.getElementById('extendModal').classList.add('hidden');
+    }
+    function setExtendDays(days) {
+      document.getElementById('extendDaysInput').value = days;
+    }
+    async function submitExtend() {
+      const days = parseInt(document.getElementById('extendDaysInput').value);
+      if (!days || days <= 0) return alert('Số ngày không hợp lệ');
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/keys/${extendingKeyId}/extend`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': adminToken
+          },
+          body: JSON.stringify({ days })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Đã gia hạn thêm ${days} ngày`, 'success');
+          closeExtendModal();
+          loadKeys();
+        }
+      } catch (err) {
+        showToast('Lỗi gia hạn', 'error');
+      }
+    }
+
+    // Load Logs
+    async function loadLogs() {
+      const tbody = document.getElementById('logsTableBody');
+      tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">Đang tải logs...</td></tr>`;
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/logs?limit=50`, {
+          headers: { 'x-admin-token': adminToken }
+        });
+        const data = await res.json();
+        if (!data.logs || !data.logs.length) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">Chưa có lượt truy cập nào</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.logs.map(log => `
+          <tr class="hover:bg-gray-800/30">
+            <td class="px-4 py-2.5 text-gray-400">${new Date(log.created_at).toLocaleTimeString('vi-VN')} ${new Date(log.created_at).toLocaleDateString('vi-VN')}</td>
+            <td class="px-4 py-2.5 text-indigo-300 font-bold">${log.key_string || '-'}</td>
+            <td class="px-4 py-2.5 text-gray-400 truncate max-w-[140px]" title="${log.hwid || ''}">${log.hwid || 'Không có'}</td>
+            <td class="px-4 py-2.5 text-gray-500">${log.ip || '-'}</td>
+            <td class="px-4 py-2.5">
+              <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}">
+                ${log.status.toUpperCase()}
+              </span>
+            </td>
+            <td class="px-4 py-2.5 text-gray-300">${escapeHtml(log.message || '')}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-rose-400">Lỗi tải logs</td></tr>`;
+      }
+    }
+
+    // CODE SNIPPETS
+    function switchLang(lang) {
+      currentLang = lang;
+      const langs = ['csharp', 'python', 'js', 'flutter', 'curl'];
+      langs.forEach(l => {
+        const btn = document.getElementById('btnLang' + l.charAt(0).toUpperCase() + l.slice(1));
+        if (btn) {
+          btn.className = (l === lang)
+            ? 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white'
+            : 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-400 hover:text-white';
+        }
+      });
+      renderCodeSnippet();
+    }
+
+    function renderCodeSnippet() {
+      const serverUrl = window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:3000';
+      const sampleKey = currentKeys.length ? currentKeys[0].key : 'VIP-A1B2C3-D4E5F6-G7H8I9';
+
+      const snippets = {
+        csharp: `// === C# (.NET WinForms / WPF / Console) ===
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+
+public class LicenseManager
+{
+    private static readonly HttpClient client = new HttpClient();
+    private const string SERVER_URL = "${serverUrl}/api/v1/verify";
+
+    public static async Task<bool> VerifyLicense(string userKey, string hwid = "PC01")
+    {
+        // Gửi qua JSON body: { "apiKey": userKey, "hwid": hwid }
+        // Hoặc gửi qua Header: x-api-key
+        var payload = new { apiKey = userKey, hwid = hwid };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync(SERVER_URL, content);
+        var jsonResponse = await response.Content.ReadAsStringAsync();
+
+        if (response.IsSuccessStatusCode)
+        {
+            Console.WriteLine("✅ Bản quyền hợp lệ: " + jsonResponse);
+            return true;
+        }
+        else
+        {
+            Console.WriteLine("❌ Lỗi kích hoạt: " + jsonResponse);
+            return false;
+        }
+    }
+}`,
+
+        python: `# === PYTHON (App Desktop / PyQt / Tool Auto) ===
+import requests
+
+SERVER_URL = "${serverUrl}/api/v1/verify"
+
+def check_license(api_key, hwid="PC_DEV_01"):
+    payload = {"apiKey": api_key, "hwid": hwid}
+    try:
+        response = requests.post(SERVER_URL, json=payload, timeout=10)
+        data = response.json()
+        if response.status_code == 200 and data.get("valid"):
+            print(f"✅ Key hợp lệ! Xin chào: {data.get('name')}")
+            return True
+        else:
+            print(f"❌ Kích hoạt thất bại: {data.get('message')}")
+            return False
+    except Exception as e:
+        print(f"⚠️ Lỗi kết nối: {e}")
+        return False`,
+
+        js: `// === JAVASCRIPT / NODE.JS / REACT NATIVE / ELECTRON ===
+const SERVER_URL = '${serverUrl}/api/v1/verify';
+
+async function verifyLicense(apiKey, hwid = 'DEVICE_01') {
+  try {
+    const res = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, hwid })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.valid) {
+      console.log('✅ Key hợp lệ!', data);
+      return { success: true, info: data };
+    } else {
+      console.error('❌ Lỗi:', data.message);
+      return { success: false, error: data.message };
+    }
+  } catch (err) {
+    return { success: false, error: 'Không thể kết nối tới server' };
+  }
+}`,
+
+        flutter: `// === FLUTTER / DART ===
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+Future<bool> verifyKey(String apiKey, String hwid) async {
+  final url = Uri.parse('${serverUrl}/api/v1/verify');
+  final response = await http.post(
+    url,
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'apiKey': apiKey, 'hwid': hwid}),
+  );
+  final data = jsonDecode(response.body);
+  return response.statusCode == 200 && data['valid'] == true;
+}`,
+
+        curl: `# === CÁCH GỌI BẰNG CURL / TERMINAL ===
+
+# Cách 1: Gửi qua body {"apiKey": "..."}
+curl -X POST "${serverUrl}/api/v1/verify" \\
+  -H "Content-Type: application/json" \\
+  -d '{"apiKey": "${sampleKey}", "hwid": "PC_TEST_001"}'
+
+# Cách 2: Gửi qua URL Query (GET hoặc POST)
+curl "${serverUrl}/api/v1/verify?key=${sampleKey}&hwid=PC_TEST_001"
+
+# Cách 3: Gửi qua Header x-api-key
+curl -X POST "${serverUrl}/api/v1/verify" \\
+  -H "x-api-key: ${sampleKey}"`
+      };
+
+      document.getElementById('codeDisplay').innerText = snippets[currentLang] || '';
+    }
+
+    function copyCurrentCode() {
+      const code = document.getElementById('codeDisplay').innerText;
+      copyText(code);
+      document.getElementById('copyCodeText').innerText = 'Đã copy!';
+      setTimeout(() => {
+        document.getElementById('copyCodeText').innerText = 'Copy code';
+      }, 1500);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt);
+      showToast('Đã copy: ' + (txt.length > 28 ? txt.slice(0, 28) + '...' : txt), 'success');
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function timeAgo(dateString) {
+      const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+      if (diff < 60) return 'Vừa xong';
+      if (diff < 3600) return Math.floor(diff / 60) + ' phút trước';
+      if (diff < 86400) return Math.floor(diff / 3600) + ' giờ trước';
+      return Math.floor(diff / 86400) + ' ngày trước';
+    }
+
+    // Khởi tạo
+    loadStats();
+    loadKeys();
+  </script>
+</body>
+</html>

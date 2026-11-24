@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: key-license-server
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node src/server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ADMIN_TOKEN
+        value: admin_secret_key_123
