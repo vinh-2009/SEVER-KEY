@@ -497,6 +497,36 @@
         }
 
         currentKeys = data.keys || [];
+
+        // TỰ ĐỘNG LƯU TRỮ VÀO BỘ NHỚ TRÌNH DUYỆT (LOCALSTORAGE VAULT)
+        if (currentKeys.length > 0 && !search && status === 'all') {
+          localStorage.setItem('auto_saved_keys_vault', JSON.stringify(currentKeys));
+        } else if (currentKeys.length === 0 && !search && status === 'all') {
+          // Nếu server bị rỗng (ví dụ sau restart container) mà trình duyệt có key cũ -> Tự động nạp lại!
+          const savedVault = localStorage.getItem('auto_saved_keys_vault');
+          if (savedVault) {
+            try {
+              const parsed = JSON.parse(savedVault);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`[Auto-Sync] Tự động khôi phục ${parsed.length} key cũ từ trình duyệt...`);
+                fetch(`${BASE_URL}/api/admin/restore`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-token': adminToken
+                  },
+                  body: JSON.stringify(parsed)
+                }).then(r => r.json()).then(resData => {
+                  if (resData.success) {
+                    showToast(`⚡ Đã tự động khôi phục lại ${resData.count} key cũ vào hệ thống!`, 'success');
+                    setTimeout(loadKeys, 500);
+                  }
+                });
+              }
+            } catch (e) {}
+          }
+        }
+
         renderKeysTable(currentKeys);
         loadStats();
       } catch (err) {

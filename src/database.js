@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 
 const BACKUP_FILE = path.join(__dirname, '..', 'keys-backup.json');
+const SEED_FILE = path.join(__dirname, 'keys-seed.json');
 const DATABASE_URL = process.env.DATABASE_URL;
 
 let isPostgres = false;
@@ -23,6 +24,59 @@ if (DATABASE_URL && (DATABASE_URL.startsWith('postgres://') || DATABASE_URL.star
   const DB_PATH = path.join(__dirname, '..', 'keys.db');
   sqliteDb = new DatabaseSync(DB_PATH);
   console.log('✅ Đang sử dụng SQLite Database cục bộ (keys.db)');
+}
+
+/**
+ * Tự động đồng bộ ra cả file backup và file seed
+ */
+function syncBackupFile(keys) {
+  try {
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(keys, null, 2), 'utf8');
+    fs.writeFileSync(SEED_FILE, JSON.stringify(keys, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Backup] Không thể ghi file backup:', err.message);
+  }
+}
+
+/**
+ * Tự động nạp toàn bộ key đã tạo trước đó vào hệ thống
+ */
+async function autoSeedKeys() {
+  const fileToLoad = fs.existsSync(SEED_FILE) ? SEED_FILE : (fs.existsSync(BACKUP_FILE) ? BACKUP_FILE : null);
+  if (!fileToLoad) return;
+
+  try {
+    const content = fs.readFileSync(fileToLoad, 'utf8');
+    const keys = JSON.parse(content);
+    if (Array.isArray(keys) && keys.length > 0) {
+      console.log(`[Auto-Seed] Đang tự động kiểm tra và nạp ${keys.length} key đã tạo trước đó...`);
+      let loaded = 0;
+      for (const item of keys) {
+        if (!item.key) continue;
+        const existing = await KeyModel.getByString(item.key);
+        if (!existing) {
+          if (isPostgres) {
+            await pgPool.query(`
+              INSERT INTO keys (key, name, status, hwid, max_devices, expires_at, note, total_requests, created_at, last_used_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              ON CONFLICT (key) DO NOTHING
+            `, [item.key, item.name || 'User', item.status || 'active', item.hwid || null, item.max_devices || 1, item.expires_at || null, item.note || '', item.total_requests || 0, item.created_at || new Date().toISOString(), item.last_used_at || null]);
+          } else {
+            sqliteDb.prepare(`
+              INSERT OR IGNORE INTO keys (key, name, status, hwid, max_devices, expires_at, note, total_requests, created_at, last_used_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(item.key, item.name || 'User', item.status || 'active', item.hwid || null, item.max_devices || 1, item.expires_at || null, item.note || '', item.total_requests || 0, item.created_at || new Date().toISOString(), item.last_used_at || null);
+          }
+          loaded++;
+        }
+      }
+      if (loaded > 0) {
+        console.log(`[Auto-Seed] Đã tự động nạp thành công ${loaded} key đã tạo trước đó vào Database!`);
+      }
+    }
+  } catch (err) {
+    console.error('[Auto-Seed] Lỗi khi nạp key seed:', err.message);
+  }
 }
 
 /**
@@ -91,47 +145,10 @@ async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_keys_key ON keys(key);
       CREATE INDEX IF NOT EXISTS idx_logs_created ON access_logs(created_at);
     `);
-
-    // Tự động khôi phục từ keys-backup.json nếu SQLite DB bị reset hoặc rỗng
-    autoRestoreIfEmpty();
   }
-}
 
-/**
- * Tự động đồng bộ ra file JSON sau mỗi thao tác (chống mất dữ liệu)
- */
-function syncBackupFile(keys) {
-  try {
-    fs.writeFileSync(BACKUP_FILE, JSON.stringify(keys, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[Backup] Không thể ghi file keys-backup.json:', err.message);
-  }
-}
-
-/**
- * Tự động nạp dữ liệu từ file JSON nếu database rỗng
- */
-function autoRestoreIfEmpty() {
-  try {
-    const row = sqliteDb.prepare('SELECT COUNT(*) as count FROM keys').get();
-    if (row.count === 0 && fs.existsSync(BACKUP_FILE)) {
-      const content = fs.readFileSync(BACKUP_FILE, 'utf8');
-      const keys = JSON.parse(content);
-      if (Array.isArray(keys) && keys.length > 0) {
-        console.log(`[Auto-Restore] Phát hiện DB mới, đang tự động nạp lại ${keys.length} key cũ từ file backup...`);
-        const stmt = sqliteDb.prepare(`
-          INSERT OR IGNORE INTO keys (id, key, name, status, hwid, max_devices, expires_at, note, total_requests, last_used_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const k of keys) {
-          stmt.run(k.id || null, k.key, k.name, k.status || 'active', k.hwid || null, k.max_devices || 1, k.expires_at || null, k.note || '', k.total_requests || 0, k.last_used_at || null, k.created_at || new Date().toISOString());
-        }
-        console.log(`[Auto-Restore] Đã khôi phục thành công ${keys.length} key!`);
-      }
-    }
-  } catch (err) {
-    console.error('[Auto-Restore] Lỗi khi nạp lại backup:', err.message);
-  }
+  // TỰ ĐỘNG NẠP LẠI TOÀN BỘ KEY ĐÃ TẠO TRƯỚC ĐÓ VÀO DATABASE
+  await autoSeedKeys();
 }
 
 function generateKeyString(prefix = 'KEY') {
@@ -235,7 +252,10 @@ const KeyModel = {
         VALUES ($1, $2, 'active', NULL, $3, $4, $5, 0, $6)
         RETURNING *
       `, [key, safeName, Number(maxDevices) || 1, expiresAt, safeNote, createdAt]);
-      return res.rows[0];
+      const created = res.rows[0];
+      const all = await this.getAll();
+      syncBackupFile(all);
+      return created;
     } else {
       sqliteDb.prepare(`
         INSERT INTO keys (key, name, status, hwid, max_devices, expires_at, note, total_requests, created_at)
@@ -266,6 +286,8 @@ const KeyModel = {
         WHERE id = $6
         RETURNING *
       `, [newName, newStatus, newNote, newMaxDevices, newExpiresAt, Number(id)]);
+      const all = await this.getAll();
+      syncBackupFile(all);
       return res.rows[0];
     } else {
       sqliteDb.prepare(`
@@ -302,6 +324,8 @@ const KeyModel = {
         WHERE id = $2
         RETURNING *
       `, [newExp, Number(id)]);
+      const all = await this.getAll();
+      syncBackupFile(all);
       return res.rows[0];
     } else {
       sqliteDb.prepare(`
@@ -320,6 +344,8 @@ const KeyModel = {
   async resetHwid(id) {
     if (isPostgres) {
       const res = await pgPool.query('UPDATE keys SET hwid = NULL WHERE id = $1 RETURNING *', [Number(id)]);
+      const all = await this.getAll();
+      syncBackupFile(all);
       return res.rows[0];
     } else {
       sqliteDb.prepare('UPDATE keys SET hwid = NULL WHERE id = ?').run(Number(id));
@@ -335,9 +361,9 @@ const KeyModel = {
       await pgPool.query('DELETE FROM keys WHERE id = $1', [Number(id)]);
     } else {
       sqliteDb.prepare('DELETE FROM keys WHERE id = ?').run(Number(id));
-      const all = await this.getAll();
-      syncBackupFile(all);
     }
+    const all = await this.getAll();
+    syncBackupFile(all);
     return true;
   },
 
@@ -377,8 +403,6 @@ const KeyModel = {
           WHERE id = ?
         `).run(now, Number(keyId));
       }
-      const all = await this.getAll();
-      syncBackupFile(all);
     }
   },
 
@@ -403,7 +427,7 @@ const KeyModel = {
       const totalRequests = sqliteDb.prepare('SELECT SUM(total_requests) as sum FROM keys').get().sum || 0;
 
       return {
-        databaseType: 'SQLite + Auto-Backup JSON',
+        databaseType: 'SQLite (Tự Động Nạp Seed & Backup)',
         totalKeys,
         activeKeys,
         blockedKeys,
@@ -412,7 +436,6 @@ const KeyModel = {
     }
   },
 
-  // Khôi phục hàng loạt key từ file JSON backup
   async restoreFromData(keysList) {
     if (!Array.isArray(keysList)) throw new Error('Dữ liệu khôi phục không hợp lệ');
 
@@ -421,7 +444,6 @@ const KeyModel = {
       if (!item.key) continue;
       const existing = await this.getByString(item.key);
       if (existing) {
-        // Cập nhật key đã có
         await this.update(existing.id, {
           name: item.name,
           status: item.status,
@@ -431,7 +453,6 @@ const KeyModel = {
           expiresAt: item.expires_at
         });
       } else {
-        // Tạo key mới
         if (isPostgres) {
           await pgPool.query(`
             INSERT INTO keys (key, name, status, hwid, max_devices, expires_at, note, total_requests, created_at)
@@ -447,10 +468,8 @@ const KeyModel = {
       count++;
     }
 
-    if (!isPostgres) {
-      const all = await this.getAll();
-      syncBackupFile(all);
-    }
+    const all = await this.getAll();
+    syncBackupFile(all);
 
     return count;
   }
