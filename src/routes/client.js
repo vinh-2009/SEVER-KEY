@@ -7,7 +7,6 @@ const { KeyModel, LogModel } = require('../database');
  * Headers, Query Params, JSON body, URL-encoded body, raw string
  */
 function extractApiKey(req) {
-  // 1. Headers
   let key = req.headers['x-api-key'] || 
             req.headers['apikey'] || 
             req.headers['api-key'] || 
@@ -15,19 +14,16 @@ function extractApiKey(req) {
             req.headers['license-key'] ||
             req.headers['x-license-key'];
 
-  // 2. Authorization Header (Bearer <token> hoặc token trực tiếp)
   if (!key && req.headers.authorization) {
     key = req.headers.authorization.replace(/^Bearer\s+/i, '').trim();
   }
 
-  // 3. Query string (?key=... &apiKey=... &api_key=... &license=...)
   if (!key && req.query) {
     key = req.query.apiKey || req.query.api_key || req.query.key || 
           req.query.license || req.query.licenseKey || req.query.license_key ||
           req.query.Key || req.query.ApiKey;
   }
 
-  // 4. Request Body
   if (!key && req.body) {
     if (typeof req.body === 'string') {
       try {
@@ -48,9 +44,6 @@ function extractApiKey(req) {
   return (key && typeof key === 'string') ? key.trim() : null;
 }
 
-/**
- * Trợ giúp trích xuất mã thiết bị (HWID)
- */
 function extractHwid(req) {
   let hwid = req.headers['x-hwid'] || req.headers['hwid'] || 
              req.headers['device-id'] || req.headers['x-device-id'];
@@ -68,9 +61,6 @@ function extractHwid(req) {
   return (hwid && typeof hwid === 'string') ? hwid.trim() : (hwid ? String(hwid).trim() : null);
 }
 
-/**
- * Trợ giúp tính số ngày còn lại
- */
 function getDaysRemaining(expiresAt) {
   if (!expiresAt) return null; // Vĩnh viễn
   const diff = new Date(expiresAt).getTime() - Date.now();
@@ -79,52 +69,44 @@ function getDaysRemaining(expiresAt) {
 }
 
 /**
- * Health check
+ * Health check & Ping giữ thức 24/24
  */
 router.all('/ping', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'Server Key & API Auth hoạt động bình thường',
+    message: 'Server Key & API Auth hoạt động 24/24 bình thường',
     time: new Date().toISOString()
   });
 });
 
 /**
  * Logic xử lý xác thực Key
- * Hỗ trợ CẢ GET LẪN POST, PUT
  */
-function handleVerify(req, res) {
+async function handleVerify(req, res) {
   const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const apiKey = extractApiKey(req);
   const clientHwid = extractHwid(req);
 
-  // 1. Kiểm tra có truyền key không
   if (!apiKey) {
-    LogModel.create({
+    await LogModel.create({
       action: 'verify',
       hwid: clientHwid,
       ip,
       status: 'failed',
-      message: 'Không tìm thấy API Key trong Header, Query hoặc Body'
+      message: 'Không tìm thấy API Key'
     });
     return res.status(400).json({
       valid: false,
       code: 'MISSING_API_KEY',
-      message: 'Không tìm thấy API Key! Vui lòng truyền key qua body {"apiKey": "..."}, query "?key=...", hoặc header "x-api-key".',
-      receivedParams: {
-        body: req.body,
-        query: req.query,
-        headersChecked: ['x-api-key', 'apikey', 'authorization', 'key']
-      }
+      message: 'Không tìm thấy API Key! Vui lòng truyền key qua body {"apiKey": "..."}, query "?key=...", hoặc header "x-api-key".'
     });
   }
 
   const cleanKey = apiKey.trim();
-  const keyRecord = KeyModel.getByString(cleanKey);
+  const keyRecord = await KeyModel.getByString(cleanKey);
 
-  // 2. Kiểm tra key có tồn tại trong database không
   if (!keyRecord) {
-    LogModel.create({
+    await LogModel.create({
       keyString: cleanKey,
       action: 'verify',
       hwid: clientHwid,
@@ -140,9 +122,8 @@ function handleVerify(req, res) {
     });
   }
 
-  // 3. Kiểm tra trạng thái bị khóa
   if (keyRecord.status === 'blocked') {
-    LogModel.create({
+    await LogModel.create({
       keyId: keyRecord.id,
       keyString: cleanKey,
       action: 'verify',
@@ -159,14 +140,13 @@ function handleVerify(req, res) {
     });
   }
 
-  // 4. Kiểm tra hạn dùng
   if (keyRecord.expires_at) {
     const expDate = new Date(keyRecord.expires_at);
     if (new Date() > expDate) {
       if (keyRecord.status !== 'expired') {
-        KeyModel.update(keyRecord.id, { status: 'expired' });
+        await KeyModel.update(keyRecord.id, { status: 'expired' });
       }
-      LogModel.create({
+      await LogModel.create({
         keyId: keyRecord.id,
         keyString: cleanKey,
         action: 'verify',
@@ -184,15 +164,13 @@ function handleVerify(req, res) {
     }
   }
 
-  // 5. Kiểm tra HWID (Khóa theo máy nếu client gửi hoặc key đã gán)
   if (clientHwid) {
     const cleanHwid = String(clientHwid).trim();
     if (!keyRecord.hwid) {
-      // Tự động liên kết HWID vào key trong lần đầu tiên sử dụng!
-      KeyModel.recordUse(keyRecord.id, cleanHwid);
+      await KeyModel.recordUse(keyRecord.id, cleanHwid);
       keyRecord.hwid = cleanHwid;
     } else if (keyRecord.hwid.toLowerCase() !== cleanHwid.toLowerCase()) {
-      LogModel.create({
+      await LogModel.create({
         keyId: keyRecord.id,
         keyString: cleanKey,
         action: 'verify',
@@ -210,10 +188,9 @@ function handleVerify(req, res) {
     }
   }
 
-  // Cập nhật lượt dùng
-  KeyModel.recordUse(keyRecord.id, clientHwid);
+  await KeyModel.recordUse(keyRecord.id, clientHwid);
 
-  LogModel.create({
+  await LogModel.create({
     keyId: keyRecord.id,
     keyString: cleanKey,
     action: 'verify',
@@ -238,15 +215,11 @@ function handleVerify(req, res) {
   });
 }
 
-// Gắn routes xác thực với nhiều bí danh để tránh lỗi sai đường dẫn
 router.all('/verify', handleVerify);
 router.all('/check', handleVerify);
 router.all('/validate', handleVerify);
 
-/**
- * Endpoint kích hoạt thiết bị tường minh
- */
-router.all('/activate', (req, res) => {
+router.all('/activate', async (req, res) => {
   const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const apiKey = extractApiKey(req);
   const clientHwid = extractHwid(req);
@@ -261,7 +234,7 @@ router.all('/activate', (req, res) => {
 
   const cleanKey = apiKey.trim();
   const cleanHwid = String(clientHwid).trim();
-  const keyRecord = KeyModel.getByString(cleanKey);
+  const keyRecord = await KeyModel.getByString(cleanKey);
 
   if (!keyRecord) {
     return res.status(404).json({
@@ -279,7 +252,6 @@ router.all('/activate', (req, res) => {
     });
   }
 
-  // Nếu key đã liên kết máy khác
   if (keyRecord.hwid && keyRecord.hwid.toLowerCase() !== cleanHwid.toLowerCase()) {
     return res.status(403).json({
       success: false,
@@ -288,10 +260,9 @@ router.all('/activate', (req, res) => {
     });
   }
 
-  // Kích hoạt thiết bị
-  KeyModel.recordUse(keyRecord.id, cleanHwid);
+  await KeyModel.recordUse(keyRecord.id, cleanHwid);
 
-  LogModel.create({
+  await LogModel.create({
     keyId: keyRecord.id,
     keyString: cleanKey,
     action: 'activate',
@@ -311,16 +282,13 @@ router.all('/activate', (req, res) => {
   });
 });
 
-/**
- * Endpoint Demo bảo vệ dữ liệu bằng API Key
- */
-router.all('/protected-data', (req, res) => {
+router.all('/protected-data', async (req, res) => {
   const apiKey = extractApiKey(req);
   if (!apiKey) {
     return res.status(401).json({ error: 'Chưa có API Key' });
   }
 
-  const keyRecord = KeyModel.getByString(apiKey.trim());
+  const keyRecord = await KeyModel.getByString(apiKey.trim());
   if (!keyRecord || keyRecord.status !== 'active') {
     return res.status(403).json({ error: 'Key không hợp lệ hoặc đã hết hạn' });
   }

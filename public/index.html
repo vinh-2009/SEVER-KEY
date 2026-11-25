@@ -155,14 +155,25 @@
           </button>
           
           <!-- NÚT TẠO NHANH 1-CLICK -->
-          <button onclick="quickCreateKey()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition" title="Tạo ngay 1 Key 30 ngày chỉ với 1 click">
-            <i class="fa-solid fa-bolt text-amber-300"></i> Tạo Nhanh Key (30 Ngày)
+          <button onclick="quickCreateKey()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition" title="Tạo ngay 1 Key 30 ngày chỉ với 1 click">
+            <i class="fa-solid fa-bolt text-amber-300"></i> Tạo Nhanh Key
           </button>
 
           <!-- NÚT TÙY CHỌN TẠO KEY -->
-          <button onclick="openCreateModal()" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium text-xs sm:text-sm rounded-lg shadow-md shadow-indigo-600/30 flex items-center gap-2 transition">
-            <i class="fa-solid fa-plus"></i> Tạo Key Tùy Chỉnh
+          <button onclick="openCreateModal()" class="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium text-xs rounded-lg shadow-md shadow-indigo-600/30 flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-plus"></i> Tạo Tùy Chỉnh
           </button>
+
+          <!-- NÚT SAO LƯU BACKUP JSON -->
+          <button onclick="downloadBackup()" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-cyan-400 font-medium text-xs rounded-lg border border-gray-700 flex items-center gap-1.5 transition" title="Tải toàn bộ key về máy tính để không bao giờ sợ mất dữ liệu">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Sao Lưu
+          </button>
+
+          <!-- NÚT PHỤC HỒI RESTORE JSON -->
+          <button onclick="document.getElementById('restoreFileInput').click()" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-amber-400 font-medium text-xs rounded-lg border border-gray-700 flex items-center gap-1.5 transition" title="Khôi phục lại key từ file JSON">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Khôi Phục
+          </button>
+          <input type="file" id="restoreFileInput" accept=".json" onchange="handleRestoreFile(event)" class="hidden">
         </div>
       </div>
 
@@ -611,6 +622,59 @@
       } catch (err) {
         showToast('Lỗi gửi yêu cầu tới server', 'error');
       }
+    }
+
+    // TẢI BẢN SAO LƯU BACKUP JSON
+    async function downloadBackup() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/backup`, {
+          headers: { 'x-admin-token': adminToken }
+        });
+        if (!res.ok) throw new Error('Không thể tải backup');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `keys-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('📥 Đã tải file sao lưu toàn bộ Key về máy!', 'success');
+      } catch (err) {
+        showToast('Lỗi khi tải file sao lưu: ' + err.message, 'error');
+      }
+    }
+
+    // PHỤC HỒI RESTORE TỪ FILE JSON
+    async function handleRestoreFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const json = JSON.parse(e.target.result);
+          const res = await fetch(`${BASE_URL}/api/admin/restore`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-admin-token': adminToken
+            },
+            body: JSON.stringify(json)
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(`📤 ${data.message}`, 'success');
+            loadKeys();
+          } else {
+            showToast(data.message || 'Lỗi khôi phục key', 'error');
+          }
+        } catch (err) {
+          showToast('File JSON không hợp lệ: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset input
     }
 
     // Modal Create Key

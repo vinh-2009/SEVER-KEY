@@ -1,82 +1,57 @@
-# 🌐 HƯỚNG DẪN XUẤT SERVER KEY RA MẠNG WEB (PUBLIC INTERNET)
+# 🌐 HƯỚNG DẪN CẤU HÌNH SERVER CHẠY 24/24 & LƯU TRỮ VĨNH VIỄN (KHÔNG MẤT KEY CŨ)
 
-Để người dùng ở các máy tính khác hoặc trên điện thoại có thể xác thực API Key từ xa qua Internet, bạn cần một đường link Web công khai (`https://...`). Dưới đây là 3 cách dễ nhất:
-
----
-
-## 🚀 CÁCH 1: Đưa Lên Cloud Miễn Phí 24/7 (Khuyên Dùng Nhất - Render.com)
-
-Render là dịch vụ máy chủ đám mây miễn phí 100%, server sẽ chạy vĩnh viễn 24/24 trên mạng mà **không cần bạn phải bật máy tính**.
-
-### Các bước thực hiện (chỉ mất 2 phút):
-1. **Tạo tài khoản:** Truy cập [https://render.com](https://render.com) và đăng ký miễn phí (bằng GitHub hoặc Email).
-2. **Đưa mã nguồn lên GitHub:**
-   - Tạo 1 repository mới trên [https://github.com](https://github.com) (chế độ Private hoặc Public).
-   - Tải toàn bộ thư mục `key-server` này lên GitHub (trừ thư mục `node_modules`).
-3. **Kết nối vào Render:**
-   - Trên Dashboard của Render, bấm **New +** $\rightarrow$ chọn **Web Service**.
-   - Chọn kho lưu trữ GitHub bạn vừa tải lên.
-   - Điền các thông số:
-     - **Name**: `my-app-key-server` (hoặc tên tùy bạn thích)
-     - **Runtime**: `Node`
-     - **Build Command**: `npm install --omit=dev`
-     - **Start Command**: `node src/server.js`
-     - **Instance Type**: `Free`
-   - Bấm **Create Web Service**.
-4. **Nhận link Web:**
-   - Sau khoảng 1-2 phút, Render sẽ cấp cho bạn một đường link web cố định dạng:
-     `https://my-app-key-server.onrender.com`
-   - Bạn chỉ cần copy link này gắn vào App của mình!
+Tài liệu này giải quyết triệt để 2 vấn đề lớn nhất khi đưa server lên mạng miễn phí:
+1. **Server chạy thông suốt 24/24:** Không bị ngủ đông, App của khách mở lên là kết nối được ngay lập tức.
+2. **Không bao giờ bị mất hoặc reset Key cũ:** Dữ liệu lưu vĩnh viễn trên Cloud Database hoặc tự động sao lưu.
 
 ---
 
-## ⚡ CÁCH 2: Mở Link Web Ngay Từ Máy Tính Bằng 1-Click (Dùng Thử Ngay)
+## ⚡ PHẦN 1: CÁCH GIỮ SERVER HOẠT ĐỘNG 24/24 (KHÔNG BỊ NGỦ ĐÔNG)
 
-Nếu bạn chưa muốn tạo tài khoản cloud mà muốn có ngay một đường link Web để test thử cho bạn bè hoặc người khác:
+Trên các nền tảng miễn phí như Render.com, nếu sau 15 phút không có ai vào thì server sẽ tạm "ngủ". Để server luôn thức 24/24:
 
-1. Đảm bảo server đang chạy (bằng file [start.bat](file:///C:/Users/ADMIN/.gemini/antigravity/scratch/key-server/start.bat)).
-2. Nhấp đúp chuột vào file [mo-port-ra-web.bat](file:///C:/Users/ADMIN/.gemini/antigravity/scratch/key-server/mo-port-ra-web.bat).
-3. Màn hình sẽ hiện ra đường link web công khai, ví dụ:
-   `your url is: https://cold-cats-run.loca.lt`
-4. Bất kỳ ai trên thế giới cũng có thể truy cập vào link này để xác thực Key qua Internet!
-
----
-
-## 🖥️ CÁCH 3: Cài Đặt Lên VPS Riêng (Ubuntu / Debian Linux)
-
-Nếu bạn có VPS riêng (DigitalOcean, Vultr, Linode, Hetzner, AWS, hoặc VPS Việt Nam):
-
-```bash
-# 1. Cài đặt Node.js
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt-get install -y nodejs git
-
-# 2. Upload thư mục key-server lên VPS và di chuyển vào thư mục
-cd key-server
-
-# 3. Cài đặt thư viện
-npm install --omit=dev
-
-# 4. Cài đặt PM2 để chạy ngầm vĩnh viễn
-sudo npm install -g pm2
-pm2 start src/server.js --name "key-server"
-pm2 startup
-pm2 save
-```
+### Cách thiết lập UptimeRobot (Miễn phí 100% - chỉ làm 1 lần):
+1. Truy cập [https://uptimerobot.com](https://uptimerobot.com) và đăng ký tài khoản miễn phí.
+2. Bấm nút **+ Add New Monitor**:
+   - **Monitor Type**: Chọn `HTTP(s)`
+   - **Friendly Name**: Đặt tên (ví dụ: `Server Key 24/24`)
+   - **URL (or IP)**: Dán link ping của bạn vào, ví dụ:  
+     `https://ten-app-cua-ban.onrender.com/api/v1/ping`
+   - **Monitoring Interval**: Chọn `5 minutes` (5 phút gọi 1 lần)
+3. Bấm **Create Monitor**.
+$\rightarrow$ **Kết quả:** UptimeRobot sẽ tự động "đánh thức" server của bạn 5 phút/lần. Server sẽ **chạy xuyên suốt 24/24, 365 ngày/năm** không bao giờ bị tắt!
 
 ---
 
-## 🔄 Cách Thay Link Web Vào Ứng Dụng (App) Của Bạn
+## 🔒 PHẦN 2: CÁCH ĐẢM BẢO KEY CŨ KHÔNG BAO GIỜ BỊ RESET (LƯU TRỮ VĨNH VIỄN)
 
-Khi bạn đã có link Web (ví dụ `https://my-app-key-server.onrender.com`), hãy mở code App của bạn và thay đổi:
+Khi chạy trên cloud miễn phí, nếu server khởi động lại thì ổ đĩa tạm thời có thể bị làm mới. Dưới đây là 2 cách để đảm bảo an toàn dữ liệu 100%:
 
-* **Trước đây (Chạy local trên máy):**
-  ```csharp
-  private const string SERVER_URL = "http://localhost:3000/api/v1/verify";
-  ```
-* **Sau khi xuất ra Web:**
-  ```csharp
-  private const string SERVER_URL = "https://my-app-key-server.onrender.com/api/v1/verify";
-  ```
+### Cách A: Dùng Cloud Database miễn phí (Khuyên Dùng - Tự Động 100%)
+Server đã được tích hợp sẵn khả năng tự động kết nối Cloud PostgreSQL.
+1. Bạn có thể tạo 1 database PostgreSQL miễn phí tại [https://neon.tech](https://neon.tech) hoặc tạo luôn mục **PostgreSQL** trên [Render.com](https://render.com).
+2. Lấy đường link kết nối (dạng `postgres://user:password@ep-xyz.neon.tech/neondb...`).
+3. Vào dịch vụ Web Service của bạn trên Render $\rightarrow$ chọn **Environment** $\rightarrow$ thêm biến môi trường:
+   - **Key**: `DATABASE_URL`
+   - **Value**: Dán link `postgres://...` vừa lấy ở trên vào.
+4. Bấm **Save Changes**.
+$\rightarrow$ **Kết quả:** Toàn bộ Key và lượt truy cập sẽ được lưu vĩnh viễn trên Cloud Database. Dù bạn có nâng cấp code hay restart server 1000 lần thì **100% key cũ vẫn nguyên vẹn**!
 
-Tất cả các chức năng: Xác thực Key, Khóa mã máy HWID, Gia hạn ngày, Quản trị Dashboard đều hoạt động trực tiếp qua mạng Internet!
+---
+
+### Cách B: Dùng Tính Năng Sao Lưu & Phục Hồi 1-Click (Ngay Trên Dashboard)
+Nếu bạn vẫn dùng SQLite cục bộ:
+1. **Nút "📥 Sao Lưu":** Bấm nút này trên Web Dashboard bất cứ lúc nào để tải về file `keys-backup-YYYY-MM-DD.json` lưu trữ an toàn trong máy tính của bạn.
+2. **Nút "📤 Khôi Phục":** Khi bạn chuyển sang server mới hoặc sau khi deploy, chỉ cần bấm nút này và chọn file JSON backup $\rightarrow$ toàn bộ Key cũ sẽ được nạp lại trong 1 giây!
+3. **Cơ chế tự động:** Server cũng tự động ghi nhận file `keys-backup.json` sau mỗi lần bạn tạo hoặc cập nhật key.
+
+---
+
+## 📁 PHẦN 3: ĐẨY LẠI MÃ NGUỒN MỚI LÊN GITHUB
+
+Toàn bộ các cập nhật:
+- Tính năng tự động giữ thức 24/24 (`Anti-Sleep`)
+- Nút Sao lưu & Phục hồi trên giao diện Web
+- Hỗ trợ Cloud PostgreSQL vĩnh viễn
+
+Đã được đóng gói sẵn sàng để bạn đẩy lên kho GitHub `https://github.com/vinh-2009/SEVER-KEY.git`.

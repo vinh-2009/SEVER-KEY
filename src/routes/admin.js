@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { KeyModel, LogModel } = require('../database');
+const { KeyModel, LogModel, isPostgres } = require('../database');
 const { ADMIN_TOKEN } = require('../config');
 
 // Middleware xác thực quyền Admin
@@ -14,9 +14,6 @@ function requireAdmin(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress || '';
   const isLocal = ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('localhost') || ip === '::ffff:127.0.0.1';
 
-  // Cho phép nếu:
-  // 1. Token chính xác
-  // 2. Hoặc chạy trực tiếp trên máy nội bộ (localhost) khi chưa set token
   if (token === ADMIN_TOKEN || (isLocal && (!token || token === 'admin_secret_key_123'))) {
     return next();
   }
@@ -31,34 +28,34 @@ function requireAdmin(req, res, next) {
 router.use(requireAdmin);
 
 // Thống kê tổng quan
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const stats = KeyModel.getStats();
-    res.json({ success: true, stats });
+    const stats = await KeyModel.getStats();
+    res.json({ success: true, stats, isCloudDatabase: isPostgres });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
 // Lấy danh sách Key
-router.get('/keys', (req, res) => {
+router.get('/keys', async (req, res) => {
   try {
     const { search = '', status = 'all' } = req.query;
-    const keys = KeyModel.getAll(search, status);
+    const keys = await KeyModel.getAll(search, status);
     res.json({ success: true, count: keys.length, keys });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Tạo nhanh Key 1-Click (Không cần điền form, tiện lợi tối đa)
-router.all('/quick-create', (req, res) => {
+// Tạo nhanh Key 1-Click
+router.all('/quick-create', async (req, res) => {
   try {
     const durationDays = req.query.days || req.body.days || 30;
     const prefix = req.query.prefix || req.body.prefix || 'VIP';
     const name = req.query.name || req.body.name || `Khách hàng #${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const newKey = KeyModel.create({
+    const newKey = await KeyModel.create({
       name,
       durationDays: Number(durationDays) || 30,
       prefix,
@@ -77,14 +74,13 @@ router.all('/quick-create', (req, res) => {
 });
 
 // Tạo Key mới tiêu chuẩn
-router.post('/keys', (req, res) => {
+router.post('/keys', async (req, res) => {
   try {
     const { name, durationDays, maxDevices, prefix, note, customKey, quantity = 1 } = req.body;
 
     const count = Math.min(Math.max(parseInt(quantity) || 1, 1), 50);
     const createdKeys = [];
 
-    // Parse số ngày: nếu là 0 hoặc "0" thì vĩnh viễn (null), nếu không truyền thì mặc định 30 ngày
     let days = 30;
     if (durationDays !== undefined && durationDays !== null && durationDays !== '') {
       days = Number(durationDays);
@@ -98,7 +94,7 @@ router.post('/keys', (req, res) => {
         keyName = `${keyName} #${i + 1}`;
       }
 
-      const newKey = KeyModel.create({
+      const newKey = await KeyModel.create({
         name: keyName,
         durationDays: days,
         maxDevices: maxDevices ? parseInt(maxDevices) : 1,
@@ -125,10 +121,10 @@ router.post('/keys', (req, res) => {
 });
 
 // Cập nhật key
-router.patch('/keys/:id', (req, res) => {
+router.patch('/keys/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updated = KeyModel.update(id, req.body);
+    const updated = await KeyModel.update(id, req.body);
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy Key' });
     }
@@ -139,11 +135,11 @@ router.patch('/keys/:id', (req, res) => {
 });
 
 // Gia hạn ngày sử dụng
-router.post('/keys/:id/extend', (req, res) => {
+router.post('/keys/:id/extend', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { days = 30 } = req.body;
-    const updated = KeyModel.extendDays(id, days);
+    const updated = await KeyModel.extendDays(id, days);
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy Key' });
     }
@@ -154,10 +150,10 @@ router.post('/keys/:id/extend', (req, res) => {
 });
 
 // Reset mã máy (HWID)
-router.post('/keys/:id/reset-hwid', (req, res) => {
+router.post('/keys/:id/reset-hwid', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updated = KeyModel.resetHwid(id);
+    const updated = await KeyModel.resetHwid(id);
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy Key' });
     }
@@ -168,10 +164,10 @@ router.post('/keys/:id/reset-hwid', (req, res) => {
 });
 
 // Xóa key
-router.delete('/keys/:id', (req, res) => {
+router.delete('/keys/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    KeyModel.delete(id);
+    await KeyModel.delete(id);
     res.json({ success: true, message: 'Đã xóa Key thành công' });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -179,13 +175,55 @@ router.delete('/keys/:id', (req, res) => {
 });
 
 // Xem logs gần nhất
-router.get('/logs', (req, res) => {
+router.get('/logs', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const logs = LogModel.getRecent(limit);
+    const logs = await LogModel.getRecent(limit);
     res.json({ success: true, count: logs.length, logs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// TẢI BẢN SAO LƯU (BACKUP) TOÀN BỘ KEY RA FILE JSON
+router.get('/backup', async (req, res) => {
+  try {
+    const keys = await KeyModel.getAll();
+    const backupData = {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      totalKeys: keys.length,
+      keys
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="keys-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.send(JSON.stringify(backupData, null, 2));
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PHỤC HỒI KEY TỪ FILE JSON (RESTORE)
+router.post('/restore', async (req, res) => {
+  try {
+    let keysList = req.body;
+    if (req.body && req.body.keys) {
+      keysList = req.body.keys;
+    }
+
+    if (!Array.isArray(keysList)) {
+      return res.status(400).json({ success: false, message: 'Dữ liệu file JSON không đúng cấu trúc (Cần danh sách keys)' });
+    }
+
+    const restoredCount = await KeyModel.restoreFromData(keysList);
+    res.json({
+      success: true,
+      message: `Đã khôi phục thành công ${restoredCount} key vào cơ sở dữ liệu!`,
+      count: restoredCount
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 

@@ -7,11 +7,17 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"
   },
-  "keywords": ["license", "api-key", "key-server", "hwid"],
+  "keywords": [
+    "license",
+    "api-key",
+    "key-server",
+    "hwid"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "pg": "^8.23.1"
   }
 }
